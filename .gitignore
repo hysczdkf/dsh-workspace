@@ -5,6 +5,10 @@
 *.pem
 *.key
 
+# 抓取缓存与中间产物
+raw/
+.tools-targets.json
+
 # 工具与缓存
 .tools/
 __pycache__/
