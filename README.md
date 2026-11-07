@@ -1,4 +1,4 @@
-# ICPC / CCPC 中国队史档案
+﻿# ICPC / CCPC 中国队史档案
 
 把 ICPC 中国区域赛、EC-Final 与 CCPC 的历年参赛队伍汇总成一个可检索的静态网页：**学校、队名、队员、过题数、罚时、名次**，支持按赛季/赛事筛选、关键词搜索，以及单支队伍的生涯回看。
 
@@ -8,10 +8,10 @@
 
 ## 在线页面
 
-直接用浏览器打开 `web/index.html`，或起一个静态服务器（浏览器对本地 `fetch` 有 CORS 限制，推荐后者）：
+直接用浏览器打开 `docs/index.html`，或起一个静态服务器（浏览器对本地 `fetch` 有 CORS 限制，推荐后者）：
 
 ```bash
-python -m http.server 8000 --directory web
+python -m http.server 8000 --directory docs
 # 打开 http://localhost:8000
 ```
 
@@ -28,7 +28,7 @@ scripts/
   fetch_data.py      从 xcpcio/board-data 拉取原始榜单 JSON（带缓存、重试、大小校验）
   build_dataset.py   计算名次/罚时，聚合成前端用的精简数据
   targets.json       要抓取的赛事列表
-web/
+docs/
   index.html         页面
   style.css
   app.js             纯原生 JS，无构建步骤、无依赖
@@ -46,7 +46,7 @@ python scripts/fetch_data.py
 python scripts/build_dataset.py
 
 # 3. 本地预览
-python -m http.server 8000 --directory web
+python -m http.server 8000 --directory docs
 ```
 
 ## 数据口径

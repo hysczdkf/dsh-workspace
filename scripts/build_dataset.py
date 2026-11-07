@@ -1,7 +1,7 @@
-"""Aggregate raw contest JSON (xcpcio board-data) into one compact dataset.
+﻿"""Aggregate raw contest JSON (xcpcio board-data) into one compact dataset.
 
 Input : raw/<group>/<season>/<contest>/{config,team,run}.json
-Output: web/data/dataset.json  (+ web/data/schools.json)
+Output: docs/data/dataset.json  (+ docs/data/schools.json)
 
 Ranking follows ICPC rules: solved desc, penalty asc.
 Penalty per solved problem = minutes to first AC + penalty_per_wrong * wrong tries.
@@ -49,7 +49,7 @@ def season_label(group, season):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=os.path.join(ROOT, "raw"))
-    ap.add_argument("--out", default=os.path.join(ROOT, "web", "data"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "docs", "data"))
     ap.add_argument("--min-teams", type=int, default=8)
     args = ap.parse_args()
 
