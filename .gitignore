@@ -1,0 +1,19 @@
+# 环境与密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 工具与缓存
+.tools/
+__pycache__/
+*.pyc
+node_modules/
+
+# 系统
+Thumbs.db
+.DS_Store
+
+# 日志
+*.log
