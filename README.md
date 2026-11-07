@@ -32,7 +32,7 @@ docs/
   index.html         页面
   style.css
   app.js             纯原生 JS，无构建步骤、无依赖
-  data/              build_dataset.py 生成的 JSON（dataset / schools / careers）
+  data/              index.json（索引）+ rows-<赛季>.json（按季懒加载）+ careers.json（点开标签才下载）
 raw/                 原始数据缓存（不入库，约 90 MB）
 ```
 

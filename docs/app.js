@@ -2,99 +2,135 @@
   'use strict';
 
   var PAGE = 50;
+
   var state = {
-    rows: [], contests: [], schools: [], careers: [],
-    filtered: [], page: 1,
-    season: 'all', contest: 'all', q: '', sort: 'rank',
-    sPage: 1, cPage: 1, cQ: '', cSort: 'appear', sQ: ''
+    contests: [], schools: [], seasons: [],
+    rows: [],
+    loaded: Object.create(null),
+    careers: null,
+    season: null,          // season key, or 'all'
+    contest: 'all',
+    q: '',
+    sort: 'rank',
+    page: 1,
+    sPage: 1, sQ: '',
+    cPage: 1, cQ: '', cSort: 'appear',
+    filtered: []
   };
   var careerMap = new Map();
 
   function $(id) { return document.getElementById(id); }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function fmtDate(ms) {
-    if (!ms) return '';
-    var d = new Date(ms);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }
 
-  function load() {
-    var files = ['data/dataset.json', 'data/schools.json', 'data/careers.json'];
-    return Promise.all(files.map(function (f) {
-      return fetch(f).then(function (r) {
-        if (!r.ok) throw new Error(f + ': HTTP ' + r.status);
-        return r.json();
-      });
-    })).then(function (out) {
-      state.contests = out[0].contests;
-      state.rows = out[0].rows;
-      state.schools = out[1];
-      state.careers = out[2];
-      state.careers.forEach(function (c) { careerMap.set(c[0] + '\u0000' + c[1], c); });
+  function getJson(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+      return r.json();
     });
   }
 
+  function seasonFile(key) { return 'data/rows-' + key + '.json'; }
+
+  function note(text) { $('rows-meta').textContent = text; }
+
+  // ---------- loading ----------
+
+  function loadSeason(key) {
+    if (state.loaded[key]) return Promise.resolve();
+    return getJson(seasonFile(key)).then(function (rows) {
+      state.loaded[key] = true;
+      for (var i = 0; i < rows.length; i++) state.rows.push(rows[i]);
+    });
+  }
+
+  function loadAllSeasons() {
+    var pending = state.seasons.filter(function (s) { return !state.loaded[s.key]; });
+    var done = state.seasons.length - pending.length;
+    var chain = Promise.resolve();
+    pending.forEach(function (s) {
+      chain = chain.then(function () {
+        note('正在加载 ' + s.label + ' …（' + (done + 1) + '/' + state.seasons.length + '）');
+        return loadSeason(s.key).then(function () { done++; });
+      });
+    });
+    return chain;
+  }
+
+  function ensureLoaded() {
+    if (state.season === 'all') return loadAllSeasons();
+    return loadSeason(state.season);
+  }
+
+  // ---------- views ----------
+
   function boot() {
-    $('st-contests').textContent = state.contests.length.toLocaleString();
-    $('st-rows').textContent = state.rows.length.toLocaleString();
-    $('st-schools').textContent = state.schools.length.toLocaleString();
-    $('st-teams').textContent = state.careers.length.toLocaleString();
+    var c = state.contests.length, r = 0, sc = state.schools.length, t = 0;
+    state.seasons.forEach(function (s) { r += s.rows; });
+    $('st-contests').textContent = c.toLocaleString();
+    $('st-rows').textContent = r.toLocaleString();
+    $('st-schools').textContent = sc.toLocaleString();
+    $('st-teams').textContent = '—';
 
     fillSeasonFilter();
     fillContestFilter('all');
-    applyRows();
-    renderSchools();
-    renderCareers();
-    $('loading').style.display = 'none';
+
+    // default to the most recent season so first paint stays fast
+    state.season = state.seasons.length ? state.seasons[0].key : 'all';
+    $('f-season').value = state.season;
+
+    note('正在加载最新赛季 …');
+    ensureLoaded().then(function () {
+      applyRows();
+      renderSchools();
+    }).catch(showError);
   }
 
-  function seasons() {
-    var seen = new Set(), out = [];
-    state.contests.forEach(function (c) { if (!seen.has(c.season)) { seen.add(c.season); out.push(c.season); } });
-    return out;
+  function showError(err) {
+    $('loading').style.display = 'block';
+    $('loading').textContent = '数据加载失败：' + err.message;
   }
 
   function fillSeasonFilter() {
     var sel = $('f-season');
-    sel.innerHTML = '<option value="all">全部赛季</option>' + seasons().map(function (s) {
-      return '<option value="' + esc(s) + '">' + esc(s) + '</option>';
-    }).join('');
+    sel.innerHTML = '<option value="all">全部赛季（较慢）</option>' +
+      state.seasons.map(function (s) {
+        return '<option value="' + esc(s.key) + '">' + esc(s.label) +
+          '（' + s.contests + ' 场 · ' + s.rows + ' 队）</option>';
+      }).join('');
   }
 
-  function fillContestFilter(season) {
+  function fillContestFilter(seasonKey) {
     var sel = $('f-contest');
     var list = state.contests.map(function (c, i) { return { c: c, i: i }; })
-      .filter(function (o) { return season === 'all' || o.c.season === season; });
+      .filter(function (o) { return seasonKey === 'all' || o.c.key === seasonKey; });
     sel.innerHTML = '<option value="all">全部赛事</option>' + list.map(function (o) {
       return '<option value="' + o.i + '">' + esc(o.c.name) + '（' + o.c.teams + '队）</option>';
     }).join('');
   }
 
+  function schoolName(row) { return state.schools[row[4]][0]; }
+
   function rowHaystack(row) {
-    if (!row._h) {
-      row._h = (row[4] + ' ' + row[5] + ' ' + row[6]).toLowerCase();
-    }
+    if (!row._h) row._h = (schoolName(row) + ' ' + row[5] + ' ' + row[6]).toLowerCase();
     return row._h;
   }
 
   function applyRows() {
     var q = state.q.trim().toLowerCase();
     var terms = q ? q.split(/\s+/) : [];
-    var season = state.season, contest = state.contest;
-
+    var contest = state.contest;
     var idx = [];
+
     for (var i = 0; i < state.rows.length; i++) {
       var row = state.rows[i];
-      var c = state.contests[row[0]];
-      if (season !== 'all' && c.season !== season) continue;
       if (contest !== 'all' && String(row[0]) !== contest) continue;
       if (terms.length) {
-        var hay = rowHaystack(row);
-        var ok = true;
+        var hay = rowHaystack(row), ok = true;
         for (var t = 0; t < terms.length; t++) {
           if (hay.indexOf(terms[t]) === -1) { ok = false; break; }
         }
@@ -105,24 +141,13 @@
 
     var sort = state.sort;
     if (sort === 'rank') {
-      idx.sort(function (a, b) {
-        var ra = state.rows[a], rb = state.rows[b];
-        return ra[0] - rb[0] || ra[1] - rb[1];
-      });
+      idx.sort(function (a, b) { return state.rows[a][0] - state.rows[b][0] || state.rows[a][1] - state.rows[b][1]; });
     } else if (sort === 'solved') {
-      idx.sort(function (a, b) {
-        var ra = state.rows[a], rb = state.rows[b];
-        return rb[2] - ra[2] || ra[1] - rb[1];
-      });
+      idx.sort(function (a, b) { return state.rows[b][2] - state.rows[a][2] || state.rows[a][1] - state.rows[b][1]; });
     } else if (sort === 'school') {
-      idx.sort(function (a, b) {
-        var ra = state.rows[a], rb = state.rows[b];
-        return ra[4].localeCompare(rb[4], 'zh-CN') || ra[1] - rb[1];
-      });
+      idx.sort(function (a, b) { return schoolName(state.rows[a]).localeCompare(schoolName(state.rows[b]), 'zh-CN'); });
     } else if (sort === 'time') {
-      idx.sort(function (a, b) {
-        return state.rows[b][0] - state.rows[a][0] || state.rows[a][1] - state.rows[b][1];
-      });
+      idx.sort(function (a, b) { return state.rows[b][0] - state.rows[a][0] || state.rows[a][1] - state.rows[b][1]; });
     }
 
     state.filtered = idx;
@@ -145,7 +170,7 @@
         '<td class="num ' + cls + '">' + r[1] + '</td>' +
         '<td>' + esc(c.season) + '</td>' +
         '<td>' + esc(c.name) + '</td>' +
-        '<td class="school">' + esc(r[4]) + '</td>' +
+        '<td class="school">' + esc(schoolName(r)) + '</td>' +
         '<td>' + esc(r[5]) + tag + '</td>' +
         '<td class="members">' + esc(r[6]) + '</td>' +
         '<td class="num">' + r[2] + '</td>' +
@@ -153,10 +178,12 @@
         '</tr>';
     }).join('');
 
-    $('tbl-rows').tBodies[0].innerHTML = html || '<tr><td colspan="8" style="text-align:center;color:#8b93a3">没有匹配的记录</td></tr>';
-    $('rows-meta').textContent = '共 ' + total.toLocaleString() + ' 条记录' +
-      (state.contest !== 'all' ? ' · 单场赛事' : '') +
-      (state.season !== 'all' ? ' · ' + state.season : '');
+    $('tbl-rows').tBodies[0].innerHTML = html ||
+      '<tr><td colspan="8" style="text-align:center;color:#8b93a3">没有匹配的记录</td></tr>';
+
+    var label = state.season === 'all' ? '全部赛季' :
+      (state.seasons.find(function (s) { return s.key === state.season; }) || {}).label || '';
+    note('已载入 ' + label + ' · 共 ' + total.toLocaleString() + ' 条记录');
     renderPager($('pager'), state.page, pages, function (p) { state.page = p; renderRows(); });
   }
 
@@ -173,20 +200,37 @@
 
   function renderSchools() {
     var q = state.sQ.trim().toLowerCase();
-    var list = state.schools.filter(function (s) { return !q || s.name.toLowerCase().indexOf(q) !== -1; });
+    var list = state.schools.filter(function (s) { return !q || s[0].toLowerCase().indexOf(q) !== -1; });
     var pages = Math.max(1, Math.ceil(list.length / PAGE));
     if (state.sPage > pages) state.sPage = pages;
     var slice = list.slice((state.sPage - 1) * PAGE, state.sPage * PAGE);
     $('tbl-schools').tBodies[0].innerHTML = slice.map(function (s) {
-      return '<tr><td class="school">' + esc(s.name) + '</td>' +
-        '<td class="num">' + s.appearances + '</td>' +
-        '<td class="num">' + s.teams + '</td>' +
-        '<td class="num">' + (s.best_rank == null ? '—' : s.best_rank) + '</td></tr>';
+      return '<tr><td class="school">' + esc(s[0]) + '</td>' +
+        '<td class="num">' + s[1] + '</td><td class="num">' + s[2] + '</td>' +
+        '<td class="num">' + (s[3] == null ? '—' : s[3]) + '</td></tr>';
     }).join('') || '<tr><td colspan="4" style="text-align:center;color:#8b93a3">没有匹配的学校</td></tr>';
     renderPager($('s-pager'), state.sPage, pages, function (p) { state.sPage = p; renderSchools(); });
   }
 
+  function ensureCareers() {
+    if (state.careers) return Promise.resolve();
+    $('tbl-careers').tBodies[0].innerHTML =
+      '<tr><td colspan="6" style="text-align:center;color:#8b93a3">正在加载队伍生涯数据（约 2 MB）…</td></tr>';
+    return getJson('data/careers.json').then(function (list) {
+      state.careers = list;
+      list.forEach(function (c) {
+        careerMap.set(c[0] + '\u0000' + c[1], c);
+        if (c[2] > 1) state.bestTeam = c;
+      });
+      var teams = list.length;
+      list.forEach(function (c) { });
+      $('st-teams').textContent = teams.toLocaleString();
+      renderCareers();
+    });
+  }
+
   function renderCareers() {
+    if (!state.careers) return;
     var q = state.cQ.trim().toLowerCase();
     var list = state.careers.filter(function (c) {
       return !q || (c[0] + ' ' + c[1]).toLowerCase().indexOf(q) !== -1;
@@ -201,31 +245,36 @@
     if (state.cPage > pages) state.cPage = pages;
     var slice = list.slice((state.cPage - 1) * PAGE, state.cPage * PAGE);
     $('tbl-careers').tBodies[0].innerHTML = slice.map(function (c) {
-      var hist = c[5].slice(0, 6).map(function (h) {
+      var hist = c[5].slice(0, 4).map(function (h) {
         var ct = state.contests[h[0]];
         return esc(ct.season + ' ' + ct.name) + ' · #' + h[1] + ' · ' + h[2] + '题';
       }).join('<br>');
-      return '<tr data-school="' + esc(c[0]) + '" data-team="' + esc(c[1]) + '"><td class="school">' + esc(c[0]) + '</td>' +
-        '<td>' + esc(c[1]) + '</td>' +
-        '<td class="num">' + c[2] + '</td>' +
-        '<td class="num">' + c[3] + '</td>' +
-        '<td class="num">' + c[4] + '</td>' +
-        '<td class="members">' + hist + '</td></tr>';
+      return '<tr data-school="' + esc(c[0]) + '" data-team="' + esc(c[1]) + '">' +
+        '<td class="school">' + esc(c[0]) + '</td><td>' + esc(c[1]) + '</td>' +
+        '<td class="num">' + c[2] + '</td><td class="num">' + c[3] + '</td>' +
+        '<td class="num">' + c[4] + '</td><td class="members">' + hist + '</td></tr>';
     }).join('') || '<tr><td colspan="6" style="text-align:center;color:#8b93a3">没有匹配的队伍</td></tr>';
     renderPager($('c-pager'), state.cPage, pages, function (p) { state.cPage = p; renderCareers(); });
   }
 
   function openCareer(school, team) {
     var c = careerMap.get(school + '\u0000' + team);
-    if (!c) return;
+    if (!c) {
+      $('modal-title').textContent = team;
+      $('modal-sub').textContent = school + ' · 生涯数据尚未加载，请切换到「队伍生涯」标签载入后再试';
+      $('tbl-modal').tBodies[0].innerHTML = '';
+      $('modal').hidden = false;
+      return;
+    }
     $('modal-title').textContent = team;
     $('modal-sub').textContent = school + ' · 参赛 ' + c[2] + ' 次 · 最佳名次 ' + c[3] + ' · 累计过题 ' + c[4];
-    var rows = c[5].slice().sort(function (a, b) { return b[0] - a[0]; }).map(function (h) {
-      var ct = state.contests[h[0]];
-      return '<tr><td>' + esc(ct.season) + '</td><td>' + esc(ct.name) + '</td>' +
-        '<td class="num">' + h[1] + '</td><td class="num">' + h[2] + '</td><td class="num">' + h[3] + '</td></tr>';
-    }).join('');
-    $('tbl-modal').tBodies[0].innerHTML = rows;
+    $('tbl-modal').tBodies[0].innerHTML = c[5].slice().sort(function (a, b) { return b[0] - a[0]; })
+      .map(function (h) {
+        var ct = state.contests[h[0]];
+        return '<tr><td>' + esc(ct.season) + '</td><td>' + esc(ct.name) + '</td>' +
+          '<td class="num">' + h[1] + '</td><td class="num">' + h[2] + '</td>' +
+          '<td class="num">' + h[3] + '</td></tr>';
+      }).join('');
     $('modal').hidden = false;
   }
 
@@ -236,19 +285,26 @@
         document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
         btn.classList.add('active');
         $('panel-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'careers') ensureCareers().catch(showError);
+        if (btn.dataset.tab === 'schools') renderSchools();
       });
     });
 
     $('f-season').addEventListener('change', function (e) {
       state.season = e.target.value;
       state.contest = 'all';
+      state.rows = [];
+      state.loaded = Object.create(null);
       fillContestFilter(state.season);
-      applyRows();
+      note('正在加载 …');
+      ensureLoaded().then(applyRows).catch(showError);
     });
+
     $('f-contest').addEventListener('change', function (e) {
       state.contest = e.target.value;
       applyRows();
     });
+
     var qt;
     $('f-q').addEventListener('input', function (e) {
       clearTimeout(qt);
@@ -261,6 +317,7 @@
       clearTimeout(st);
       st = setTimeout(function () { state.sQ = e.target.value; state.sPage = 1; renderSchools(); }, 160);
     });
+
     var ct;
     $('c-q').addEventListener('input', function (e) {
       clearTimeout(ct);
@@ -272,19 +329,25 @@
       var tr = e.target.closest('tr');
       if (!tr || !tr.dataset.i) return;
       var r = state.rows[+tr.dataset.i];
-      openCareer(r[4], r[5]);
+      openCareer(schoolName(r), r[5]);
     });
     $('tbl-careers').tBodies[0].addEventListener('click', function (e) {
       var tr = e.target.closest('tr');
       if (!tr) return;
       openCareer(tr.dataset.school, tr.dataset.team);
     });
+
     $('modal-close').addEventListener('click', function () { $('modal').hidden = true; });
     $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) $('modal').hidden = true; });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $('modal').hidden = true; });
   }
 
-  load().then(function () { bind(); boot(); }).catch(function (err) {
-    $('loading').textContent = '数据加载失败：' + err.message + '（请先运行 scripts/build_dataset.py 生成 web/data）';
-  });
+  getJson('data/index.json').then(function (idx) {
+    state.contests = idx.contests;
+    state.schools = idx.schools;
+    state.seasons = idx.seasons;
+    $('loading').style.display = 'none';
+    bind();
+    boot();
+  }).catch(showError);
 })();

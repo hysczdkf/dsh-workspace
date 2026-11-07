@@ -1,14 +1,18 @@
-﻿"""Aggregate raw contest JSON (xcpcio board-data) into one compact dataset.
+"""Aggregate raw contest JSON (xcpcio board-data) into a lazy-loadable dataset.
 
-Input : raw/<group>/<season>/<contest>/{config,team,run}.json
-Output: docs/data/dataset.json  (+ docs/data/schools.json)
+Input : raw/data/<group>/<season>/<contest>/{config,team,run,organizations}.json
+Output:
+  docs/data/index.json          比赛列表、学校汇总、赛季索引
+  docs/data/rows-<season>.json  该赛季的全部参赛记录（学校用索引引用）
+  docs/data/careers.json        队伍生涯（按需加载）
 
 Ranking follows ICPC rules: solved desc, penalty asc.
-Penalty per solved problem = minutes to first AC + penalty_per_wrong * wrong tries.
+Penalty per solved problem = minutes to first AC + 20 * wrong tries before AC.
 """
 import argparse
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -38,8 +42,13 @@ def text_of(node, default=""):
 
 def name_of_person(person):
     if isinstance(person, dict):
-        return text_of(person.get("name"))
-    return text_of(person)
+        return text_of(person.get("name")).strip()
+    return text_of(person).strip()
+
+
+def season_key(group, season):
+    slug = re.sub(r"[^a-z0-9]+", "-", season.lower()).strip("-")
+    return "%s-%s" % (group, slug)
 
 
 def season_label(group, season):
@@ -53,15 +62,17 @@ def main():
     ap.add_argument("--min-teams", type=int, default=8)
     args = ap.parse_args()
 
-    contests = []
-    rows = []
-    careers = defaultdict(list)
-
-    print("raw root: %s" % args.raw)
     raw_root = args.raw
     nested = os.path.join(raw_root, "data")
     if os.path.isdir(nested):
         raw_root = nested
+
+    contests = []
+    rows = []                       # [cidx, rank, solved, penalty, school_idx, team, members, official]
+    school_index = {}               # name -> idx
+    school_list = []
+    career_hist = defaultdict(list)  # (school, team) -> [[cidx, rank, solved, penalty]]
+    season_rows = defaultdict(list)  # season_key -> rows
 
     for group in ("icpc", "ccpc"):
         gdir = os.path.join(raw_root, group)
@@ -102,14 +113,12 @@ def main():
 
                 penalty_seconds = int(config.get("penalty", 1200) or 1200)
                 problems = config.get("problems") or []
-                prob_index = {str(p.get("id")): i for i, p in enumerate(problems)}
 
                 # 时间戳单位不随 config 走：46th 用秒，49th/50th 用毫秒，
                 # 用最大值判断（一场比赛不可能超过 86400 秒）
                 max_ts = max([(r.get("timestamp") or 0) for r in runs], default=0)
                 ts_in_ms = max_ts > 86400
 
-                # --- score the runs ---
                 per_team = defaultdict(lambda: {"solved": set(), "penalty": 0, "wrong": defaultdict(int)})
                 for run in runs:
                     tid = str(run.get("team_id"))
@@ -143,13 +152,13 @@ def main():
 
                 scored.sort(key=lambda x: (-x["solved"], x["penalty"]))
                 cidx = len(contests)
-                start = config.get("start_time") or 0
                 contests.append({
                     "id": "%s/%s/%s" % (group, season, contest),
                     "group": group,
                     "season": season_label(group, season),
+                    "key": season_key(group, season),
                     "name": text_of(config.get("contest_name")) or contest,
-                    "date": start,
+                    "date": config.get("start_time") or 0,
                     "problems": len(problems),
                     "teams": len(scored),
                 })
@@ -170,62 +179,75 @@ def main():
                     tname = text_of(team.get("name")).strip()
                     if not school or not tname:
                         continue  # 上游缺学校/队名的记录会污染统计，直接丢弃
-                    rows.append([
-                        cidx, rank, item["solved"], item["penalty"],
-                        school, tname, "、".join(members), 1 if item["official"] else 0,
-                    ])
-                    careers[(school, tname)].append([cidx, rank, item["solved"], item["penalty"]])
 
-    # --- school aggregation ---
-    schools = defaultdict(lambda: {"name": "", "teams": set(), "appearances": 0,
-                                   "gold": 0, "silver": 0, "bronze": 0, "best_rank": None})
-    for row in rows:
-        cidx, rank, solved, penalty, school = row[0], row[1], row[2], row[3], row[4]
-        entry = schools[school]
-        entry["name"] = school
-        entry["teams"].add(row[5])
-        entry["appearances"] += 1
-        if entry["best_rank"] is None or rank < entry["best_rank"]:
-            entry["best_rank"] = rank
+                    si = school_index.get(school)
+                    if si is None:
+                        si = len(school_list)
+                        school_index[school] = si
+                        school_list.append([school, 0, set(), None])
 
-    school_list = []
-    for name, entry in schools.items():
-        school_list.append({
-            "name": name,
-            "teams": len(entry["teams"]),
-            "appearances": entry["appearances"],
-            "best_rank": entry["best_rank"],
+                    rec = [cidx, rank, item["solved"], item["penalty"],
+                           si, tname, "、".join(members), 1 if item["official"] else 0]
+                    rows.append(rec)
+                    season_rows[contests[cidx]["key"]].append(rec)
+                    career_hist[(school, tname)].append([cidx, rank, item["solved"], item["penalty"]])
+
+    # --- school aggregation (rows already reference schools by index) ---
+    for rec in rows:
+        entry = school_list[rec[4]]
+        entry[1] += 1                      # appearances
+        entry[2].add(rec[5])               # distinct teams
+        if entry[3] is None or rec[1] < entry[3]:
+            entry[3] = rec[1]              # best rank
+
+    schools_out = [[e[0], e[1], len(e[2]), e[3]] for e in school_list]
+    schools_out.sort(key=lambda s: (-s[1], s[0]))
+
+    seasons_out = []
+    for key, recs in season_rows.items():
+        label = next(c["season"] for c in contests if c["key"] == key)
+        seasons_out.append({
+            "key": key,
+            "label": label,
+            "rows": len(recs),
+            "contests": len({r[0] for r in recs}),
         })
-    school_list.sort(key=lambda s: (-s["appearances"], s["name"]))
+    seasons_out.sort(key=lambda s: (-max([c["date"] for c in contests if c["key"] == s["key"]] or [0])))
 
-    career_list = []
-    for (school, tname), hist in careers.items():
-        hist.sort(key=lambda h: -h[0])
-        best = min(h[1] for h in hist)
-        total_solved = sum(h[2] for h in hist)
-        career_list.append([school, tname, len(hist), best, total_solved,
-                            [[h[0], h[1], h[2], h[3]] for h in hist]])
-    career_list.sort(key=lambda c: (-c[2], -c[4]))
-
-    dataset = {
+    index = {
         "contests": contests,
-        "rows": rows,
+        "schools": schools_out,
+        "seasons": seasons_out,
+        "counts": {
+            "contests": len(contests),
+            "rows": len(rows),
+            "schools": len(schools_out),
+            "teams": len(career_hist),
+        },
     }
-    os.makedirs(args.out, exist_ok=True)
-    with open(os.path.join(args.out, "dataset.json"), "w", encoding="utf-8") as f:
-        json.dump(dataset, f, ensure_ascii=False, separators=(",", ":"))
-    with open(os.path.join(args.out, "schools.json"), "w", encoding="utf-8") as f:
-        json.dump(school_list, f, ensure_ascii=False, separators=(",", ":"))
-    with open(os.path.join(args.out, "careers.json"), "w", encoding="utf-8") as f:
-        json.dump(career_list, f, ensure_ascii=False, separators=(",", ":"))
 
-    print("contests: %d" % len(contests))
-    print("rows    : %d" % len(rows))
-    print("schools : %d" % len(school_list))
-    print("teams   : %d" % len(career_list))
-    for name in ("dataset.json", "schools.json", "careers.json"):
-        path = os.path.join(args.out, name)
-        print("  %-13s %6.2f MB" % (name, os.path.getsize(path) / 1e6))
+    careers_out = []
+    for (school, tname), hist in career_hist.items():
+        hist.sort(key=lambda h: -h[0])
+        careers_out.append([school, tname, len(hist), min(h[1] for h in hist),
+                            sum(h[2] for h in hist), hist])
+    careers_out.sort(key=lambda c: (-c[2], -c[4]))
+
+    os.makedirs(args.out, exist_ok=True)
+    with open(os.path.join(args.out, "index.json"), "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
+    for key, recs in season_rows.items():
+        with open(os.path.join(args.out, "rows-%s.json" % key), "w", encoding="utf-8") as f:
+            json.dump(recs, f, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(args.out, "careers.json"), "w", encoding="utf-8") as f:
+        json.dump(careers_out, f, ensure_ascii=False, separators=(",", ":"))
+
+    print("contests: %d  rows: %d  schools: %d  teams: %d"
+          % (index["counts"]["contests"], index["counts"]["rows"],
+             index["counts"]["schools"], index["counts"]["teams"]))
+    for name in ["index.json", "careers.json"] + ["rows-%s.json" % k for k in season_rows]:
+        p = os.path.join(args.out, name)
+        print("  %-26s %7.1f KB" % (name, os.path.getsize(p) / 1024))
     return 0
 
 
