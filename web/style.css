@@ -1,0 +1,98 @@
+:root {
+  --bg: #0f1115;
+  --panel: #161a22;
+  --line: #262c38;
+  --text: #e6e9ef;
+  --muted: #8b93a3;
+  --accent: #4f8cff;
+  --gold: #f0c05a;
+  --silver: #b9c2d0;
+  --bronze: #c98a5b;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+}
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
+
+.top { padding: 34px 0 18px; background: linear-gradient(180deg, #141b2a, var(--bg)); border-bottom: 1px solid var(--line); }
+.top h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+.top h1 span { color: var(--accent); }
+.sub { margin: 6px 0 18px; color: var(--muted); }
+
+.stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+
+.tabs { display: flex; gap: 6px; padding-top: 16px; }
+.tab {
+  background: none; border: 1px solid transparent; color: var(--muted);
+  padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--panel); border-color: var(--line); color: var(--text); }
+
+.panel { display: none; padding: 18px 0 40px; }
+.panel.active { display: block; }
+
+.filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.filters .grow { flex: 1 1 260px; }
+.filters input, .filters select {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; width: 100%;
+}
+.filters input:focus, .filters select:focus { border-color: var(--accent); }
+
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+
+.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: #1b2130; text-align: left;
+  padding: 10px 12px; font-weight: 600; color: #c9d1e0; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid #1d2330; vertical-align: top; }
+tbody tr:hover { background: #1a2029; cursor: pointer; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank-1 { color: var(--gold); font-weight: 700; }
+.rank-2 { color: var(--silver); font-weight: 700; }
+.rank-3 { color: var(--bronze); font-weight: 700; }
+.school { color: #cdd6e6; }
+.members { color: var(--muted); }
+.tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #23304a; color: #8fb4ff; margin-left: 6px; }
+
+.pager { display: flex; gap: 6px; align-items: center; justify-content: center; padding: 14px 0; }
+.pager button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 11px; cursor: pointer;
+}
+.pager button:disabled { opacity: .35; cursor: default; }
+.pager .info { color: var(--muted); margin: 0 10px; font-size: 13px; }
+
+.loading { text-align: center; color: var(--muted); padding: 60px 0; }
+
+.foot { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding: 18px 20px 40px; }
+.foot a { color: var(--accent); }
+
+.modal { position: fixed; inset: 0; background: rgba(6, 8, 12, .72); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+.modal[hidden] { display: none; }
+.modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; max-width: 760px; width: 100%; max-height: 80vh; overflow: auto; position: relative; }
+.modal-box h2 { margin: 0 0 4px; font-size: 19px; }
+.modal-sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+.modal-close { position: absolute; top: 10px; right: 12px; background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; }
+
+@media (max-width: 640px) {
+  .top h1 { font-size: 20px; }
+  .stats { gap: 18px; }
+  table { font-size: 12.5px; }
+  thead th, tbody td { padding: 8px; }
+}

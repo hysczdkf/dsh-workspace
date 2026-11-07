@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICPC / CCPC 中国队史档案</title>
+<meta name="description" content="ICPC 中国区域赛、EC-Final 与 CCPC 历年参赛队伍、成员与战绩汇总">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>ICPC / CCPC <span>中国队史档案</span></h1>
+    <p class="sub">历年中国区域赛、EC-Final、CCPC 的参赛队伍 · 学校 · 成员 · 过题与罚时</p>
+    <div class="stats" id="stats">
+      <div class="stat"><b id="st-contests">—</b><span>场比赛</span></div>
+      <div class="stat"><b id="st-rows">—</b><span>条参赛记录</span></div>
+      <div class="stat"><b id="st-schools">—</b><span>所学校</span></div>
+      <div class="stat"><b id="st-teams">—</b><span>支队伍</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs wrap">
+  <button class="tab active" data-tab="rows">队伍战绩</button>
+  <button class="tab" data-tab="schools">学校总览</button>
+  <button class="tab" data-tab="careers">队伍生涯</button>
+</nav>
+
+<main class="wrap">
+  <section id="panel-rows" class="panel active">
+    <div class="filters">
+      <label>赛季<select id="f-season"></select></label>
+      <label>赛事<select id="f-contest"></select></label>
+      <label class="grow">搜索<input id="f-q" type="search" placeholder="学校 / 队名 / 队员，空格分隔多个关键词"></label>
+      <label>排序<select id="f-sort">
+        <option value="rank">名次</option>
+        <option value="solved">过题数</option>
+        <option value="school">学校</option>
+        <option value="time">时间（新→旧）</option>
+      </select></label>
+    </div>
+    <div class="meta" id="rows-meta"></div>
+    <div class="table-wrap">
+      <table id="tbl-rows">
+        <thead><tr>
+          <th class="num">名次</th><th>赛季</th><th>赛事</th><th>学校</th><th>队名</th>
+          <th>队员</th><th class="num">过题</th><th class="num">罚时</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="pager"></div>
+  </section>
+
+  <section id="panel-schools" class="panel">
+    <div class="filters">
+      <label class="grow">搜索<input id="s-q" type="search" placeholder="学校名称"></label>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl-schools">
+        <thead><tr><th>学校</th><th class="num">出场次数</th><th class="num">队伍数</th><th class="num">最佳名次</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="s-pager"></div>
+  </section>
+
+  <section id="panel-careers" class="panel">
+    <div class="filters">
+      <label class="grow">搜索<input id="c-q" type="search" placeholder="学校或队名"></label>
+      <label>排序<select id="c-sort">
+        <option value="appear">出场次数</option>
+        <option value="best">最佳名次</option>
+        <option value="solved">累计过题</option>
+      </select></label>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl-careers">
+        <thead><tr><th>学校</th><th>队名</th><th class="num">参赛次数</th><th class="num">最佳名次</th><th class="num">累计过题</th><th>战绩</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="c-pager"></div>
+  </section>
+
+  <div id="loading" class="loading">正在加载数据…</div>
+</main>
+
+<footer class="wrap foot">
+  <p>数据来源：<a href="https://github.com/xcpcio/board-data" target="_blank" rel="noopener">xcpcio/board-data</a>（ICPC 系列赛事榜单数据）。
+     名次按 ICPC 规则重算：过题数降序、罚时升序；罚时 = 首次通过分钟数 + 20 × 通过前错误次数。</p>
+  <p>部分年份、部分赛站缺少官方榜单，页面只展示可得数据。</p>
+</footer>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close">×</button>
+    <h2 id="modal-title"></h2>
+    <p class="modal-sub" id="modal-sub"></p>
+    <div class="table-wrap">
+      <table id="tbl-modal">
+        <thead><tr><th>赛季</th><th>赛事</th><th class="num">名次</th><th class="num">过题</th><th class="num">罚时</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
