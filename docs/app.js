@@ -15,6 +15,9 @@
     page: 1,
     sPage: 1, sQ: '',
     cPage: 1, cQ: '', cSort: 'appear',
+    womenOnly: false,
+    pQ: '',
+    shards: Object.create(null),
     filtered: []
   };
   var careerMap = new Map();
@@ -108,7 +111,8 @@
     var list = state.contests.map(function (c, i) { return { c: c, i: i }; })
       .filter(function (o) { return seasonKey === 'all' || o.c.key === seasonKey; });
     sel.innerHTML = '<option value="all">全部赛事</option>' + list.map(function (o) {
-      return '<option value="' + o.i + '">' + esc(o.c.name) + '（' + o.c.teams + '队）</option>';
+      return '<option value="' + o.i + '">' + (o.c.women ? '【女生赛】' : '') +
+        esc(o.c.name) + '（' + o.c.teams + '队）</option>';
     }).join('');
   }
 
@@ -117,6 +121,23 @@
   function rowHaystack(row) {
     if (!row._h) row._h = (schoolName(row) + ' ' + row[5] + ' ' + row[6]).toLowerCase();
     return row._h;
+  }
+
+  function switchSeason(key) {
+    state.season = key;
+    state.contest = 'all';
+    state.rows = [];
+    state.loaded = Object.create(null);
+    $('f-season').value = key;
+    fillContestFilter(key);
+    note('正在加载 …');
+    return ensureLoaded().then(applyRows);
+  }
+
+  function seasonHasWomen(key) {
+    return state.contests.some(function (c) {
+      return c.women && (key === 'all' || c.key === key);
+    });
   }
 
   function applyRows() {
@@ -128,6 +149,7 @@
     for (var i = 0; i < state.rows.length; i++) {
       var row = state.rows[i];
       if (contest !== 'all' && String(row[0]) !== contest) continue;
+      if (state.womenOnly && !state.contests[row[0]].women) continue;
       if (terms.length) {
         var hay = rowHaystack(row), ok = true;
         for (var t = 0; t < terms.length; t++) {
@@ -165,10 +187,11 @@
       var r = state.rows[i], c = state.contests[r[0]];
       var cls = r[1] === 1 ? 'rank-1' : r[1] === 2 ? 'rank-2' : r[1] === 3 ? 'rank-3' : '';
       var tag = r[7] ? '' : '<span class="tag">非正式</span>';
+      var wtag = c.women ? '<span class="tag tag-women">女生赛</span>' : '';
       return '<tr data-i="' + i + '">' +
         '<td class="num ' + cls + '">' + r[1] + '</td>' +
         '<td>' + esc(c.season) + '</td>' +
-        '<td>' + esc(c.name) + '</td>' +
+        '<td>' + esc(c.name) + wtag + '</td>' +
         '<td class="school">' + esc(schoolName(r)) + '</td>' +
         '<td>' + esc(r[5]) + tag + '</td>' +
         '<td class="members">' + esc(r[6]) + '</td>' +
@@ -256,25 +279,124 @@
     renderPager($('c-pager'), state.cPage, pages, function (p) { state.cPage = p; renderCareers(); });
   }
 
+  var CAREER_HEAD = '<tr><th>赛季</th><th>赛事</th><th class="num">名次</th><th class="num">过题</th><th class="num">罚时</th></tr>';
+  var PEOPLE_HEAD = '<tr><th>赛季</th><th>赛事</th><th>队伍</th><th class="num">名次</th><th class="num">过题</th></tr>';
+
+  function showModal(title, sub, head, body) {
+    $('modal-title').textContent = title;
+    $('modal-sub').textContent = sub;
+    $('modal-head').innerHTML = head;
+    $('tbl-modal').tBodies[0].innerHTML = body;
+    $('modal').hidden = false;
+  }
+
   function openCareer(school, team) {
     var c = careerMap.get(school + '\u0000' + team);
     if (!c) {
-      $('modal-title').textContent = team;
-      $('modal-sub').textContent = school + ' · 生涯数据尚未加载，请切换到「队伍生涯」标签载入后再试';
-      $('tbl-modal').tBodies[0].innerHTML = '';
-      $('modal').hidden = false;
+      showModal(team, school + ' · 生涯数据尚未加载，请切换到「队伍生涯」标签载入后再试', CAREER_HEAD, '');
       return;
     }
-    $('modal-title').textContent = team;
-    $('modal-sub').textContent = school + ' · 参赛 ' + c[2] + ' 次 · 最佳名次 ' + c[3] + ' · 累计过题 ' + c[4];
-    $('tbl-modal').tBodies[0].innerHTML = c[5].slice().sort(function (a, b) { return b[0] - a[0]; })
+    var body = c[5].slice().sort(function (a, b) { return b[0] - a[0]; })
       .map(function (h) {
         var ct = state.contests[h[0]];
-        return '<tr><td>' + esc(ct.season) + '</td><td>' + esc(ct.name) + '</td>' +
+        return '<tr><td>' + esc(ct.season) + '</td><td>' + esc(ct.name) +
+          (ct.women ? '<span class="tag tag-women">女生赛</span>' : '') + '</td>' +
           '<td class="num">' + h[1] + '</td><td class="num">' + h[2] + '</td>' +
           '<td class="num">' + h[3] + '</td></tr>';
       }).join('');
-    $('modal').hidden = false;
+    showModal(team, school + ' · 参赛 ' + c[2] + ' 次 · 最佳名次 ' + c[3] + ' · 累计过题 ' + c[4],
+      CAREER_HEAD, body);
+  }
+
+  // ---------- 选手检索 ----------
+
+  function shardFor(name) { return name.charCodeAt(0) % 16; }
+
+  function ensureShard(bucket) {
+    if (state.shards[bucket]) return Promise.resolve(state.shards[bucket]);
+    var file = 'data/people-' + ('0' + bucket).slice(-2) + '.json';
+    return getJson(file).then(function (data) {
+      state.shards[bucket] = data;
+      return data;
+    });
+  }
+
+  function renderPeople() {
+    var q = state.pQ.trim();
+    var tbody = $('tbl-people').tBodies[0];
+    if (!q) {
+      tbody.innerHTML = '';
+      $('p-meta').textContent = '输入姓名开始检索；同名选手按学校区分，同一人在不同年份会合并。';
+      return;
+    }
+    $('p-meta').textContent = '正在加载 ' + q + ' 所在的分片…';
+
+    ensureShard(shardFor(q)).then(function (shard) {
+      var names = Object.keys(shard).filter(function (n) { return n.indexOf(q) === 0; })
+        .sort(function (a, b) {
+          if (a === q && b !== q) return -1;
+          if (b === q && a !== q) return 1;
+          return a.length - b.length || a.localeCompare(b, 'zh-CN');
+        });
+
+      var results = [];
+      names.forEach(function (n) {
+        shard[n].forEach(function (entry) {
+          var si = entry[0], hist = entry[1];
+          var best = null, solved = 0;
+          hist.forEach(function (h) {
+            if (best === null || h[1] < best) best = h[1];
+            solved += h[2];
+          });
+          results.push({ name: n, school: state.schools[si][0], hist: hist, best: best, solved: solved });
+        });
+      });
+
+      if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8b93a3">' +
+          '没有找到以「' + esc(q) + '」开头的选手</td></tr>';
+        $('p-meta').textContent = '未找到匹配选手。提示：从姓氏开始输入，如「张三」。';
+        return;
+      }
+
+      results.sort(function (a, b) { return b.hist.length - a.hist.length || a.best - b.best; });
+      var top = results.slice(0, 100);
+      state.pResults = top;
+
+      var nameCount = {};
+      results.forEach(function (r) { nameCount[r.name] = (nameCount[r.name] || 0) + 1; });
+      var conflicts = results.filter(function (r) { return nameCount[r.name] > 1; }).length;
+
+      tbody.innerHTML = top.map(function (r, i) {
+        var teams = [];
+        r.hist.forEach(function (h) { if (teams.indexOf(h[3]) === -1) teams.push(h[3]); });
+        return '<tr data-p="' + i + '">' +
+          '<td class="school">' + esc(r.name) + '</td>' +
+          '<td>' + esc(r.school) + '</td>' +
+          '<td class="num">' + r.hist.length + '</td>' +
+          '<td class="num">' + (r.best == null ? '—' : r.best) + '</td>' +
+          '<td class="num">' + r.solved + '</td>' +
+          '<td class="members">' + esc(teams.slice(0, 4).join('、')) +
+          (teams.length > 4 ? ' 等' : '') + '</td></tr>';
+      }).join('');
+
+      $('p-meta').textContent = '「' + q + '」共 ' + results.length + ' 条选手记录' +
+        (conflicts ? '（其中 ' + conflicts + ' 条姓名重复，已按学校区分）' : '') +
+        (results.length > 100 ? ' · 仅显示前 100 条' : '');
+    }).catch(showError);
+  }
+
+  function openPerson(r) {
+    var body = r.hist.slice().sort(function (a, b) { return b[0] - a[0]; })
+      .map(function (h) {
+        var ct = state.contests[h[0]];
+        return '<tr><td>' + esc(ct.season) + '</td><td>' + esc(ct.name) +
+          (ct.women ? '<span class="tag tag-women">女生赛</span>' : '') + '</td>' +
+          '<td>' + esc(h[3]) + '</td>' +
+          '<td class="num">' + h[1] + '</td><td class="num">' + h[2] + '</td></tr>';
+      }).join('');
+    showModal(r.name, r.school + ' · 参赛 ' + r.hist.length + ' 次 · 最佳名次 ' + r.best +
+      ' · 累计过题 ' + r.solved, PEOPLE_HEAD, body);
   }
 
   function bind() {
@@ -290,13 +412,7 @@
     });
 
     $('f-season').addEventListener('change', function (e) {
-      state.season = e.target.value;
-      state.contest = 'all';
-      state.rows = [];
-      state.loaded = Object.create(null);
-      fillContestFilter(state.season);
-      note('正在加载 …');
-      ensureLoaded().then(applyRows).catch(showError);
+      switchSeason(e.target.value).catch(showError);
     });
 
     $('f-contest').addEventListener('change', function (e) {
@@ -310,6 +426,33 @@
       qt = setTimeout(function () { state.q = e.target.value; applyRows(); }, 160);
     });
     $('f-sort').addEventListener('change', function (e) { state.sort = e.target.value; applyRows(); });
+
+    $('f-women').addEventListener('change', function (e) {
+      state.womenOnly = e.target.checked;
+      if (state.womenOnly && !seasonHasWomen(state.season)) {
+        // 当前赛季没有女生赛，自动切到最近一个有女生赛的赛季
+        var target = state.seasons.filter(function (s) {
+          return state.contests.some(function (c) { return c.women && c.key === s.key; });
+        })[0];
+        if (target) {
+          switchSeason(target.key).catch(showError);
+          return;
+        }
+      }
+      applyRows();
+    });
+
+    var pt;
+    $('p-q').addEventListener('input', function (e) {
+      clearTimeout(pt);
+      pt = setTimeout(function () { state.pQ = e.target.value; renderPeople(); }, 220);
+    });
+    $('tbl-people').tBodies[0].addEventListener('click', function (e) {
+      var tr = e.target.closest('tr');
+      if (!tr || tr.dataset.p === undefined || tr.dataset.p === '') return;
+      var person = state.pResults && state.pResults[+tr.dataset.p];
+      if (person) openPerson(person);
+    });
 
     var st;
     $('s-q').addEventListener('input', function (e) {

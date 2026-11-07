@@ -25,6 +25,7 @@
   <button class="tab active" data-tab="rows">队伍战绩</button>
   <button class="tab" data-tab="schools">学校总览</button>
   <button class="tab" data-tab="careers">队伍生涯</button>
+  <button class="tab" data-tab="people">选手检索</button>
 </nav>
 
 <main class="wrap">
@@ -39,6 +40,7 @@
         <option value="school">学校</option>
         <option value="time">时间（新→旧）</option>
       </select></label>
+      <label class="chk"><input type="checkbox" id="f-women"> 只看女生赛</label>
     </div>
     <div class="meta" id="rows-meta"></div>
     <div class="table-wrap">
@@ -84,6 +86,22 @@
     <div class="pager" id="c-pager"></div>
   </section>
 
+  <section id="panel-people" class="panel">
+    <div class="filters">
+      <label class="grow">选手姓名<input id="p-q" type="search" placeholder="从姓氏开始输入，例如「张三」"></label>
+    </div>
+    <div class="meta" id="p-meta">同名选手按学校区分，同一人跨年份自动合并。</div>
+    <div class="table-wrap">
+      <table id="tbl-people">
+        <thead><tr>
+          <th>姓名</th><th>学校</th><th class="num">参赛次数</th><th class="num">最佳名次</th>
+          <th class="num">累计过题</th><th>参赛队伍</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <div id="loading" class="loading">正在加载数据…</div>
 </main>
 
@@ -100,7 +118,7 @@
     <p class="modal-sub" id="modal-sub"></p>
     <div class="table-wrap">
       <table id="tbl-modal">
-        <thead><tr><th>赛季</th><th>赛事</th><th class="num">名次</th><th class="num">过题</th><th class="num">罚时</th></tr></thead>
+        <thead id="modal-head"><tr><th>赛季</th><th>赛事</th><th class="num">名次</th><th class="num">过题</th><th class="num">罚时</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>

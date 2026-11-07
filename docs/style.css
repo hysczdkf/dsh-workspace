@@ -69,6 +69,10 @@ tbody tr:hover { background: #1a2029; cursor: pointer; }
 .school { color: #cdd6e6; }
 .members { color: var(--muted); }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #23304a; color: #8fb4ff; margin-left: 6px; }
+.tag-women { background: #3a2436; color: #ff9ecb; }
+
+.filters .chk { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; padding-bottom: 8px; }
+.filters .chk input { width: auto; }
 
 .pager { display: flex; gap: 6px; align-items: center; justify-content: center; padding: 14px 0; }
 .pager button {

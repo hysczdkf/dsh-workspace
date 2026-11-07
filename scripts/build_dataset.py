@@ -161,6 +161,7 @@ def main():
                     "date": config.get("start_time") or 0,
                     "problems": len(problems),
                     "teams": len(scored),
+                    "women": "girl" in contest.lower(),
                 })
 
                 rank = 0
@@ -203,6 +204,24 @@ def main():
     schools_out = [[e[0], e[1], len(e[2]), e[3]] for e in school_list]
     schools_out.sort(key=lambda s: (-s[1], s[0]))
 
+    # --- 选手索引：姓名 -> 学校 -> 参赛记录 ---
+    # 同名不同校视为不同的人，同名同校合并为同一人
+    people = defaultdict(lambda: defaultdict(list))
+    for rec in rows:
+        cidx, rank, solved, si, team, members = rec[0], rec[1], rec[2], rec[4], rec[5], rec[6]
+        for person in members.split("、"):
+            person = person.strip()
+            if person:
+                people[person][si].append([cidx, rank, solved, team])
+
+    shards = defaultdict(dict)
+    for person, schools in people.items():
+        bucket = ord(person[0]) % 16
+        shards[bucket][person] = [[si, hist] for si, hist in schools.items()]
+
+    people_count = len(people)
+    people_conflicts = sum(1 for _, schools in people.items() if len(schools) > 1)
+
     seasons_out = []
     for key, recs in season_rows.items():
         label = next(c["season"] for c in contests if c["key"] == key)
@@ -223,6 +242,9 @@ def main():
             "rows": len(rows),
             "schools": len(schools_out),
             "teams": len(career_hist),
+            "people": people_count,
+            "people_conflicts": people_conflicts,
+            "women_contests": sum(1 for c in contests if c["women"]),
         },
     }
 
@@ -241,11 +263,17 @@ def main():
             json.dump(recs, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(args.out, "careers.json"), "w", encoding="utf-8") as f:
         json.dump(careers_out, f, ensure_ascii=False, separators=(",", ":"))
+    for bucket, payload in shards.items():
+        with open(os.path.join(args.out, "people-%02d.json" % bucket), "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 
-    print("contests: %d  rows: %d  schools: %d  teams: %d"
+    print("contests: %d  rows: %d  schools: %d  teams: %d  people: %d（同名跨校 %d）"
           % (index["counts"]["contests"], index["counts"]["rows"],
-             index["counts"]["schools"], index["counts"]["teams"]))
-    for name in ["index.json", "careers.json"] + ["rows-%s.json" % k for k in season_rows]:
+             index["counts"]["schools"], index["counts"]["teams"],
+             people_count, people_conflicts))
+    print("women contests:", index["counts"]["women_contests"])
+    for name in ["index.json", "careers.json"] + ["rows-%s.json" % k for k in season_rows] \
+            + ["people-%02d.json" % b for b in shards]:
         p = os.path.join(args.out, name)
         print("  %-26s %7.1f KB" % (name, os.path.getsize(p) / 1024))
     return 0
