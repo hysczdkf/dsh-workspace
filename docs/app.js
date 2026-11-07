@@ -69,12 +69,11 @@
   // ---------- views ----------
 
   function boot() {
-    var c = state.contests.length, r = 0, sc = state.schools.length, t = 0;
-    state.seasons.forEach(function (s) { r += s.rows; });
-    $('st-contests').textContent = c.toLocaleString();
-    $('st-rows').textContent = r.toLocaleString();
-    $('st-schools').textContent = sc.toLocaleString();
-    $('st-teams').textContent = '—';
+    var counts = state.counts || { contests: state.contests.length, rows: 0, schools: state.schools.length, teams: 0 };
+    $('st-contests').textContent = counts.contests.toLocaleString();
+    $('st-rows').textContent = counts.rows.toLocaleString();
+    $('st-schools').textContent = counts.schools.toLocaleString();
+    $('st-teams').textContent = counts.teams.toLocaleString();
 
     fillSeasonFilter();
     fillContestFilter('all');
@@ -346,6 +345,7 @@
     state.contests = idx.contests;
     state.schools = idx.schools;
     state.seasons = idx.seasons;
+    state.counts = idx.counts;
     $('loading').style.display = 'none';
     bind();
     boot();
